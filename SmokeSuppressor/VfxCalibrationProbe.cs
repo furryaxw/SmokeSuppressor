@@ -19,7 +19,9 @@ namespace SmokeSuppressor
         private static readonly ManualLogSource Log =
             BepInEx.Logging.Logger.CreateLogSource("SmokeSuppressor");
 
-        private readonly Dictionary<string, List<Candidate>> candidatesByAsset =
+        // 输出身份是材质的 shader 名：同一个输出在不同实例上是不同的 Material 对象，
+        // 因此按 shader 名去重，并把引用更新到最新实例。
+        private readonly Dictionary<string, Candidate> candidatesByOutput =
             new(StringComparer.Ordinal);
         private readonly List<Candidate> candidates = new();
 
@@ -55,21 +57,15 @@ namespace SmokeSuppressor
                 if (renderer == null)
                     return;
 
-                if (!candidatesByAsset.TryGetValue(assetName, out List<Candidate>? list) ||
-                    list == null)
+                int before = candidatesByOutput.Count;
+                RegisterOutputs(assetName, renderer);
+                RebuildFlatList();
+                if (candidatesByOutput.Count != before)
                 {
-                    list = new List<Candidate>();
-                    candidatesByAsset[assetName] = list;
-                }
-
-                int added = RegisterOutputs(assetName, renderer, list);
-                if (added > 0)
-                {
-                    RebuildFlatList();
+                    status = $"asset={assetName} 输出 {candidatesByOutput.Count} 个";
                     Log.LogInfo(
-                        $"{DiagnosticPrefix} calibration-candidates " +
-                        $"asset={assetName} added={added} total={list.Count}");
-                    status = $"asset={assetName} 输出 {list.Count} 个";
+                        $"{DiagnosticPrefix} calibration-outputs " +
+                        $"asset={assetName} total={candidatesByOutput.Count}");
                 }
             }
             catch (Exception exception)
@@ -79,10 +75,7 @@ namespace SmokeSuppressor
         }
 
         [HideFromIl2Cpp]
-        private int RegisterOutputs(
-            string assetName,
-            Renderer renderer,
-            List<Candidate> list)
+        private void RegisterOutputs(string assetName, Renderer renderer)
         {
             var materials = new List<Material>();
             try
@@ -95,10 +88,9 @@ namespace SmokeSuppressor
             }
             catch (Exception)
             {
-                return 0;
+                return;
             }
 
-            int added = 0;
             for (int materialIndex = 0; materialIndex < materials.Count; materialIndex++)
             {
                 Material material = materials[materialIndex];
@@ -106,38 +98,13 @@ namespace SmokeSuppressor
                 if (!IsVfxGeneratedOutput(shaderName))
                     continue;
 
-                if (ContainsOutput(list, renderer, materialIndex, shaderName))
-                    continue;
-
-                list.Add(new Candidate(
+                candidatesByOutput[shaderName] = new Candidate(
                     assetName,
                     renderer,
                     materialIndex,
                     shaderName,
-                    GetFirstPassName(material)));
-                added++;
+                    GetFirstPassName(material));
             }
-
-            return added;
-        }
-
-        private static bool ContainsOutput(
-            List<Candidate> list,
-            Renderer renderer,
-            int materialIndex,
-            string shaderName)
-        {
-            foreach (Candidate candidate in list)
-            {
-                if (candidate.MaterialIndex == materialIndex &&
-                    ReferenceEquals(candidate.Renderer, renderer) &&
-                    string.Equals(candidate.ShaderName, shaderName, StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private static string GetShaderName(Material material)
@@ -172,8 +139,7 @@ namespace SmokeSuppressor
         private void RebuildFlatList()
         {
             candidates.Clear();
-            foreach (List<Candidate> list in candidatesByAsset.Values)
-                candidates.AddRange(list);
+            candidates.AddRange(candidatesByOutput.Values);
             candidates.Sort(static (left, right) =>
             {
                 int byAsset = string.Compare(

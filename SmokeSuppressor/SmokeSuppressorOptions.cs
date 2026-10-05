@@ -10,8 +10,8 @@ namespace SmokeSuppressor
 
         private const string EngineKey = "hide-engine-accumulation";
         private const string MuzzleKey = "hide-muzzle-accumulation";
-        private const string ImpactAKey = "hide-impact-smoke-a";
-        private const string ImpactBKey = "hide-impact-smoke-b";
+        private const string GroundImpactKey = "hide-ground-impact-smoke";
+        private const string ArmorImpactKey = "hide-armor-impact-smoke";
 
         private readonly IModConfigRegistration registration;
 
@@ -47,16 +47,16 @@ namespace SmokeSuppressor
                         "Persistent smoke that builds up where the cannon fires.",
                         SectionId),
                     ModConfigEntryDefinition.Toggle(
-                        ImpactAKey,
-                        "Hide impact smoke A",
+                        GroundImpactKey,
+                        "Hide ground impact smoke",
                         true,
-                        "The first kind of smoke a shell impact leaves behind.",
+                        "Persistent smoke a shell leaves where it strikes the ground.",
                         SectionId),
                     ModConfigEntryDefinition.Toggle(
-                        ImpactBKey,
-                        "Hide impact smoke B",
+                        ArmorImpactKey,
+                        "Hide armour impact smoke",
                         true,
-                        "The second kind of smoke a shell impact leaves behind.",
+                        "Persistent smoke a shell leaves on armour, whether it stops or penetrates.",
                         SectionId)
                 }
             });
@@ -66,9 +66,9 @@ namespace SmokeSuppressor
 
         internal bool HideMuzzleAccumulation => Get(MuzzleKey);
 
-        internal bool HideImpactSmokeA => Get(ImpactAKey);
+        internal bool HideGroundImpactSmoke => Get(GroundImpactKey);
 
-        internal bool HideImpactSmokeB => Get(ImpactBKey);
+        internal bool HideArmorImpactSmoke => Get(ArmorImpactKey);
 
         public void Dispose() => registration.Dispose();
 
