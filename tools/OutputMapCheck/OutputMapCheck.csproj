@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\SmokeSuppressor\SmokeAccumulationOutputMap.cs"
+             Link="SmokeAccumulationOutputMap.cs" />
+    <Compile Include="..\..\SmokeSuppressor\SmokeNativeExpressionMap.cs"
+             Link="SmokeNativeExpressionMap.cs" />
+    <Compile Include="..\..\SmokeSuppressor\NativeBuildFingerprint.cs"
+             Link="NativeBuildFingerprint.cs" />
+  </ItemGroup>
+</Project>

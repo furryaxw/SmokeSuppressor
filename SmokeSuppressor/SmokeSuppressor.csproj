@@ -1,0 +1,107 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>SmokeSuppressor</AssemblyName>
+    <RootNamespace>SmokeSuppressor</RootNamespace>
+    <Version>2.5.2</Version>
+    <AssemblyVersion>2.5.1.0</AssemblyVersion>
+    <FileVersion>2.5.1.0</FileVersion>
+    <Description>Suppresses persistent engine and muzzle smoke accumulation while retaining normal smoke.</Description>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/furryaxw/SmokeSuppressor</RepositoryUrl>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SprocketGameRoot Condition="'$(SprocketGameRoot)' == '' and '$(SPROCKET_GAME_ROOT)' != ''">$(SPROCKET_GAME_ROOT)</SprocketGameRoot>
+    <SprocketGameRoot Condition="'$(SprocketGameRoot)' == ''">G:\Sprocket0.2.55.5</SprocketGameRoot>
+    <BepInExCore>$(SprocketGameRoot)\BepInEx\core</BepInExCore>
+    <GameInterop>$(SprocketGameRoot)\BepInEx\interop</GameInterop>
+    <ModDeployDirectory Condition="'$(ModDeployDirectory)' == ''">$(SprocketGameRoot)\BepInEx\plugins</ModDeployDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Retain local reverse-engineering probes without compiling them into releases. -->
+    <Compile Remove="SmokeNativeSpawnerMap.cs" />
+    <Compile Remove="SmokeOutputCalibrationState.cs" />
+    <Compile Remove="VfxNativeSpawnerOverride.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="0Harmony">
+      <HintPath>$(BepInExCore)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SprocketModAPI">
+      <HintPath>$(SprocketGameRoot)\BepInEx\plugins\SprocketModAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx.Core">
+      <HintPath>$(BepInExCore)\BepInEx.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx.Unity.Common">
+      <HintPath>$(BepInExCore)\BepInEx.Unity.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx.Unity.IL2CPP">
+      <HintPath>$(BepInExCore)\BepInEx.Unity.IL2CPP.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(BepInExCore)\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(GameInterop)\Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameInterop)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.VFXModule">
+      <HintPath>$(GameInterop)\UnityEngine.VFXModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(GameInterop)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.InputSystem">
+      <HintPath>$(GameInterop)\Unity.InputSystem.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sprocket.Vehicles">
+      <HintPath>$(GameInterop)\Sprocket.Vehicles.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sprocket.Exhausts">
+      <HintPath>$(GameInterop)\Sprocket.Exhausts.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sprocket.EffectsFramework">
+      <HintPath>$(GameInterop)\Sprocket.EffectsFramework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sprocket.Powertrains">
+      <HintPath>$(GameInterop)\Sprocket.Powertrains.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sprocket.WeaponFramework">
+      <HintPath>$(GameInterop)\Sprocket.WeaponFramework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sprocket.Vehicles.Weapons">
+      <HintPath>$(GameInterop)\Sprocket.Vehicles.Weapons.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="PostBuild"
+          AfterTargets="PostBuildEvent"
+          Condition="'$(SkipModDeploy)' != 'true'">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModDeployDirectory)" />
+  </Target>
+
+</Project>
