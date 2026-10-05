@@ -1,87 +1,105 @@
 using System;
 using System.Collections.Generic;
+using HarmonyLib;
 using BepInEx.Logging;
-using Il2CppInterop.Runtime.Attributes;
 using UnityEngine;
 using UnityEngine.VFX;
 
 namespace SmokeSuppressor
 {
-    // 定期扫描场景里的 VisualEffect，按策略关闭堆积层的 shader pass。
-    // 不挂钩具体效果类型，所以引擎、炮口与两种炮弹命中都覆盖得到。
-    internal sealed class SmokeSuppressionRunner : MonoBehaviour
+    // 在 VisualEffect 开始播放时立刻按策略关闭堆积层的 shader pass。
+    //
+    // VFX 的输出材质要等首次渲染才生成，所以播放瞬间可能还拿不到材质；那种情况下只对
+    // 这一个实例重试有限帧，而不是全局轮询场景。
+    internal static class SmokeSuppressionRuntime
     {
-        private const float ScanIntervalSeconds = 0.25f;
+        private const int MaximumRetryFrames = 8;
         private const string DiagnosticPrefix = "[SmokeSuppressor]";
 
         private static readonly ManualLogSource Log =
             BepInEx.Logging.Logger.CreateLogSource("SmokeSuppressor");
 
-        private readonly HashSet<string> loggedFailures = new(StringComparer.Ordinal);
+        private static readonly Dictionary<int, PendingEffect> Pending = new();
+        private static readonly List<int> StaleKeys = new();
+        private static readonly HashSet<string> LoggedFailures = new(StringComparer.Ordinal);
 
-        private SmokeSuppressorOptions? options;
-        private float nextScanTime;
-
-        public SmokeSuppressionRunner(IntPtr ptr) : base(ptr)
+        private static readonly SmokeLayer[] AllLayers =
         {
-        }
+            SmokeLayer.EngineAccumulation,
+            SmokeLayer.MuzzleAccumulation,
+            SmokeLayer.GroundImpactSmoke,
+            SmokeLayer.ArmorImpactSmoke
+        };
 
-        [HideFromIl2Cpp]
-        public void Configure(SmokeSuppressorOptions? configured) => options = configured;
+        internal static SmokeSuppressorOptions? Options { get; set; }
 
-        private void Update()
+        // 由 VisualEffect.Play 的 postfix 调用。
+        internal static void ObserveEffect(VisualEffect? visualEffect)
         {
-            // 标定期间由探针独占输出开关。
-            if (SmokeSuppressorMain.Instance is { CalibrationActive: true })
+            if (visualEffect == null)
                 return;
 
-            float now = Time.unscaledTime;
-            if (now < nextScanTime)
+            if (TryApply(visualEffect))
                 return;
 
-            nextScanTime = now + ScanIntervalSeconds;
-            Apply();
+            Pending[visualEffect.GetInstanceID()] =
+                new PendingEffect(visualEffect, MaximumRetryFrames);
         }
 
-        private void Apply()
+        internal static void Tick()
         {
-            try
+            if (Pending.Count == 0)
+                return;
+
+            StaleKeys.Clear();
+            foreach (KeyValuePair<int, PendingEffect> pair in Pending)
             {
-                foreach (VisualEffect visualEffect in
-                         UnityEngine.Object.FindObjectsOfType<VisualEffect>())
+                PendingEffect entry = pair.Value;
+                if (entry.Effect == null ||
+                    entry.AttemptsLeft <= 1 ||
+                    TryApply(entry.Effect))
                 {
-                    if (visualEffect == null)
-                        continue;
-
-                    Renderer? renderer = visualEffect.GetComponent<Renderer>();
-                    if (renderer == null)
-                        continue;
-
-                    ApplyToRenderer(renderer);
+                    StaleKeys.Add(pair.Key);
+                    continue;
                 }
+
+                Pending[pair.Key] =
+                    new PendingEffect(entry.Effect, entry.AttemptsLeft - 1);
             }
-            catch (Exception exception)
-            {
-                LogFailure("scan", exception.ToString());
-            }
+
+            foreach (int key in StaleKeys)
+                Pending.Remove(key);
         }
 
-        private void ApplyToRenderer(Renderer renderer)
+        internal static void Reset()
         {
+            Pending.Clear();
+            LoggedFailures.Clear();
+        }
+
+        private static bool TryApply(VisualEffect visualEffect)
+        {
+            Renderer? renderer;
             Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Material>?
                 materials;
             try
             {
+                renderer = visualEffect.GetComponent<Renderer>();
+                if (renderer == null)
+                    return false;
+
                 materials = renderer.sharedMaterials;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                return;
+                LogFailure("renderer", exception.Message);
+                return false;
             }
 
-            if (materials == null)
-                return;
+            if (materials == null || materials.Length == 0)
+                return false;
 
+            bool applied = false;
             for (int index = 0; index < materials.Length; index++)
             {
                 Material material = materials[index];
@@ -96,27 +114,34 @@ namespace SmokeSuppressor
                 {
                     if (!SmokeSuppressionPolicy.Matches(layer, shaderName))
                         continue;
-                    if (!SmokeSuppressionPolicy.ShouldHide(layer, options))
+                    if (!SmokeSuppressionPolicy.ShouldHide(layer, Options))
                         continue;
 
-                    DisableOutput(material, layer, shaderName);
+                    applied |= DisableOutput(material, layer, shaderName);
                 }
             }
+
+            return applied;
         }
 
-        private void DisableOutput(Material material, SmokeLayer layer, string shaderName)
+        private static bool DisableOutput(
+            Material material,
+            SmokeLayer layer,
+            string shaderName)
         {
             try
             {
                 string passName = material.GetPassName(0) ?? string.Empty;
                 if (passName.Length == 0)
-                    return;
+                    return false;
 
                 material.SetShaderPassEnabled(passName, false);
+                return true;
             }
             catch (Exception exception)
             {
                 LogFailure($"{layer}:{shaderName}", exception.Message);
+                return false;
             }
         }
 
@@ -133,9 +158,9 @@ namespace SmokeSuppressor
             }
         }
 
-        private void LogFailure(string category, string failure)
+        private static void LogFailure(string category, string failure)
         {
-            if (!loggedFailures.Add($"{category}|{failure}"))
+            if (!LoggedFailures.Add($"{category}|{failure}"))
                 return;
 
             Log.LogError(
@@ -143,12 +168,44 @@ namespace SmokeSuppressor
                 $"category={category},error={failure}");
         }
 
-        private static readonly SmokeLayer[] AllLayers =
+        private readonly struct PendingEffect
         {
-            SmokeLayer.EngineAccumulation,
-            SmokeLayer.MuzzleAccumulation,
-            SmokeLayer.GroundImpactSmoke,
-            SmokeLayer.ArmorImpactSmoke
-        };
+            internal PendingEffect(VisualEffect effect, int attemptsLeft)
+            {
+                Effect = effect;
+                AttemptsLeft = attemptsLeft;
+            }
+
+            internal VisualEffect Effect { get; }
+
+            internal int AttemptsLeft { get; }
+        }
+    }
+
+    // 每一帧只推进刚播放的那些实例；没有待处理实例时不做事。
+    internal sealed class SmokeSuppressionRunner : MonoBehaviour
+    {
+        public SmokeSuppressionRunner(IntPtr ptr) : base(ptr)
+        {
+        }
+
+        private void Update()
+        {
+            // 标定期间由探针独占输出开关。
+            if (SmokeSuppressorMain.Instance is { CalibrationActive: true })
+                return;
+
+            SmokeSuppressionRuntime.Tick();
+        }
+
+        private void OnDestroy() => SmokeSuppressionRuntime.Reset();
+    }
+
+    [HarmonyPatch(typeof(VisualEffect), "Play", new Type[0])]
+    internal static class VisualEffectPlayPatch
+    {
+        [HarmonyPostfix]
+        private static void Postfix(VisualEffect __instance)
+            => SmokeSuppressionRuntime.ObserveEffect(__instance);
     }
 }

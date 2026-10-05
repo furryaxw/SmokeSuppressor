@@ -60,7 +60,8 @@ namespace SmokeSuppressor
                     $"set {CalibrationSection}.{CalibrationEnabledKey}=false to run normally.");
             }
 
-            AddComponent<SmokeSuppressionRunner>().Configure(options);
+            SmokeSuppressionRuntime.Options = options;
+            AddComponent<SmokeSuppressionRunner>();
 
             Log.LogInfo(
                 $"{DiagnosticPrefix} enabled " +
