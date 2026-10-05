@@ -15,7 +15,7 @@ using SprocketModAPI;
 
 namespace SmokeSuppressor
 {
-    [BepInPlugin(PluginGuid, "Smoke Suppressor", "2.5.2")]
+    [BepInPlugin(PluginGuid, "Smoke Suppressor", "0.1.0")]
     [BepInDependency("furryaxw.sprocket-mod-api")]
     public sealed class SmokeSuppressorMain : BasePlugin
     {
